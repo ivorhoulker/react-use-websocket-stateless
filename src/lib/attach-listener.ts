@@ -1,40 +1,44 @@
-import { MutableRefObject } from 'react';
-import { setUpSocketIOPing } from './socket-io';
 import {
-  DEFAULT_RECONNECT_LIMIT,
   DEFAULT_RECONNECT_INTERVAL_MS,
+  DEFAULT_RECONNECT_LIMIT,
   ReadyState,
   isEventSourceSupported,
-} from './constants';
-import { Options, SendMessage, WebSocketLike } from './types';
-import { assertIsWebSocket } from './util';
+} from "./constants";
+import { Options, SendMessage, WebSocketLike } from "./types";
+
+import { MutableRefObject } from "react";
+import { assertIsWebSocket } from "./util";
+import { setUpSocketIOPing } from "./socket-io";
 
 export interface Setters {
-  setLastMessage: (message: WebSocketEventMap['message']) => void;
+  // setLastMessage: (message: WebSocketEventMap['message']) => void;
   setReadyState: (readyState: ReadyState) => void;
 }
 
 const bindMessageHandler = (
   webSocketInstance: WebSocketLike,
-  optionsRef: MutableRefObject<Options>,
-  setLastMessage: Setters['setLastMessage'],
+  optionsRef: MutableRefObject<Options>
+  // setLastMessage: Setters["setLastMessage"]
 ) => {
-  webSocketInstance.onmessage = (message: WebSocketEventMap['message']) => {
+  webSocketInstance.onmessage = (message: WebSocketEventMap["message"]) => {
     optionsRef.current.onMessage && optionsRef.current.onMessage(message);
-    if (typeof optionsRef.current.filter === 'function' && optionsRef.current.filter(message) !== true) {
+    if (
+      typeof optionsRef.current.filter === "function" &&
+      optionsRef.current.filter(message) !== true
+    ) {
       return;
     }
-    setLastMessage(message);
+    // setLastMessage(message);
   };
 };
 
 const bindOpenHandler = (
   webSocketInstance: WebSocketLike,
   optionsRef: MutableRefObject<Options>,
-  setReadyState: Setters['setReadyState'],
-  reconnectCount: MutableRefObject<number>,
+  setReadyState: Setters["setReadyState"],
+  reconnectCount: MutableRefObject<number>
 ) => {
-  webSocketInstance.onopen = (event: WebSocketEventMap['open']) => {
+  webSocketInstance.onopen = (event: WebSocketEventMap["open"]) => {
     optionsRef.current.onOpen && optionsRef.current.onOpen(event);
     reconnectCount.current = 0;
     setReadyState(ReadyState.OPEN);
@@ -44,9 +48,9 @@ const bindOpenHandler = (
 const bindCloseHandler = (
   webSocketInstance: WebSocketLike,
   optionsRef: MutableRefObject<Options>,
-  setReadyState: Setters['setReadyState'],
+  setReadyState: Setters["setReadyState"],
   reconnect: () => void,
-  reconnectCount: MutableRefObject<number>,
+  reconnectCount: MutableRefObject<number>
 ) => {
   if (isEventSourceSupported && webSocketInstance instanceof EventSource) {
     return () => {};
@@ -54,22 +58,28 @@ const bindCloseHandler = (
   assertIsWebSocket(webSocketInstance, optionsRef.current.skipAssert);
   let reconnectTimeout: number;
 
-  webSocketInstance.onclose = (event: WebSocketEventMap['close']) => {
+  webSocketInstance.onclose = (event: WebSocketEventMap["close"]) => {
     optionsRef.current.onClose && optionsRef.current.onClose(event);
     setReadyState(ReadyState.CLOSED);
-    if (optionsRef.current.shouldReconnect && optionsRef.current.shouldReconnect(event)) {
-      const reconnectAttempts = optionsRef.current.reconnectAttempts ?? DEFAULT_RECONNECT_LIMIT;
+    if (
+      optionsRef.current.shouldReconnect &&
+      optionsRef.current.shouldReconnect(event)
+    ) {
+      const reconnectAttempts =
+        optionsRef.current.reconnectAttempts ?? DEFAULT_RECONNECT_LIMIT;
       if (reconnectCount.current < reconnectAttempts) {
-        const nextReconnectInterval = typeof optionsRef.current.reconnectInterval === 'function' ?
-          optionsRef.current.reconnectInterval(reconnectCount.current) :
-          optionsRef.current.reconnectInterval;
+        const nextReconnectInterval =
+          typeof optionsRef.current.reconnectInterval === "function"
+            ? optionsRef.current.reconnectInterval(reconnectCount.current)
+            : optionsRef.current.reconnectInterval;
 
         reconnectTimeout = window.setTimeout(() => {
           reconnectCount.current++;
           reconnect();
         }, nextReconnectInterval ?? DEFAULT_RECONNECT_INTERVAL_MS);
       } else {
-        optionsRef.current.onReconnectStop && optionsRef.current.onReconnectStop(reconnectAttempts);
+        optionsRef.current.onReconnectStop &&
+          optionsRef.current.onReconnectStop(reconnectAttempts);
         console.warn(`Max reconnect attempts of ${reconnectAttempts} exceeded`);
       }
     }
@@ -81,39 +91,49 @@ const bindCloseHandler = (
 const bindErrorHandler = (
   webSocketInstance: WebSocketLike,
   optionsRef: MutableRefObject<Options>,
-  setReadyState: Setters['setReadyState'],
+  setReadyState: Setters["setReadyState"],
   reconnect: () => void,
-  reconnectCount: MutableRefObject<number>,
+  reconnectCount: MutableRefObject<number>
 ) => {
   let reconnectTimeout: number;
 
-  webSocketInstance.onerror = (error: WebSocketEventMap['error']) => {
+  webSocketInstance.onerror = (error: WebSocketEventMap["error"]) => {
     optionsRef.current.onError && optionsRef.current.onError(error);
     if (isEventSourceSupported && webSocketInstance instanceof EventSource) {
-      optionsRef.current.onClose && optionsRef.current.onClose({
-        ...error,
-        code: 1006,
-        reason: `An error occurred with the EventSource: ${error}`,
-        wasClean: false,
-      });
+      optionsRef.current.onClose &&
+        optionsRef.current.onClose({
+          ...error,
+          code: 1006,
+          reason: `An error occurred with the EventSource: ${error}`,
+          wasClean: false,
+        });
 
       setReadyState(ReadyState.CLOSED);
       webSocketInstance.close();
     }
-    
+
     if (optionsRef.current.retryOnError) {
-      if (reconnectCount.current < (optionsRef.current.reconnectAttempts ?? DEFAULT_RECONNECT_LIMIT)) {
-        const nextReconnectInterval = typeof optionsRef.current.reconnectInterval === 'function' ?
-          optionsRef.current.reconnectInterval(reconnectCount.current) :
-          optionsRef.current.reconnectInterval;
+      if (
+        reconnectCount.current <
+        (optionsRef.current.reconnectAttempts ?? DEFAULT_RECONNECT_LIMIT)
+      ) {
+        const nextReconnectInterval =
+          typeof optionsRef.current.reconnectInterval === "function"
+            ? optionsRef.current.reconnectInterval(reconnectCount.current)
+            : optionsRef.current.reconnectInterval;
 
         reconnectTimeout = window.setTimeout(() => {
           reconnectCount.current++;
           reconnect();
         }, nextReconnectInterval ?? DEFAULT_RECONNECT_INTERVAL_MS);
       } else {
-        optionsRef.current.onReconnectStop && optionsRef.current.onReconnectStop(optionsRef.current.reconnectAttempts as number);
-        console.warn(`Max reconnect attempts of ${optionsRef.current.reconnectAttempts} exceeded`);
+        optionsRef.current.onReconnectStop &&
+          optionsRef.current.onReconnectStop(
+            optionsRef.current.reconnectAttempts as number
+          );
+        console.warn(
+          `Max reconnect attempts of ${optionsRef.current.reconnectAttempts} exceeded`
+        );
       }
     }
   };
@@ -122,14 +142,14 @@ const bindErrorHandler = (
 };
 
 export const attachListeners = (
-    webSocketInstance: WebSocketLike,
-    setters: Setters,
-    optionsRef: MutableRefObject<Options>,
-    reconnect: () => void,
-    reconnectCount: MutableRefObject<number>,
-    sendMessage: SendMessage,
-  ): (() => void) => {
-  const { setLastMessage, setReadyState } = setters;
+  webSocketInstance: WebSocketLike,
+  setters: Setters,
+  optionsRef: MutableRefObject<Options>,
+  reconnect: () => void,
+  reconnectCount: MutableRefObject<number>,
+  sendMessage: SendMessage
+): (() => void) => {
+  const { setReadyState } = setters;
 
   let interval: number;
   let cancelReconnectOnClose: () => void;
@@ -139,25 +159,16 @@ export const attachListeners = (
     interval = setUpSocketIOPing(sendMessage);
   }
 
-  bindMessageHandler(
-    webSocketInstance,
-    optionsRef,
-    setLastMessage,
-  );
+  bindMessageHandler(webSocketInstance, optionsRef);
 
-  bindOpenHandler(
-    webSocketInstance,
-    optionsRef,
-    setReadyState,
-    reconnectCount,
-  );
+  bindOpenHandler(webSocketInstance, optionsRef, setReadyState, reconnectCount);
 
   cancelReconnectOnClose = bindCloseHandler(
     webSocketInstance,
     optionsRef,
     setReadyState,
     reconnect,
-    reconnectCount,
+    reconnectCount
   );
 
   cancelReconnectOnError = bindErrorHandler(
@@ -165,7 +176,7 @@ export const attachListeners = (
     optionsRef,
     setReadyState,
     reconnect,
-    reconnectCount,
+    reconnectCount
   );
 
   return () => {

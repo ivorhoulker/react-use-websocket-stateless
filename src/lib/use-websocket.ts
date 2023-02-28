@@ -1,38 +1,44 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { flushSync } from 'react-dom';
-import { DEFAULT_OPTIONS, isEventSourceSupported, ReadyState, UNPARSABLE_JSON_OBJECT } from './constants';
-import { createOrJoinSocket } from './create-or-join';
-import { getUrl } from './get-url';
-import websocketWrapper from './proxy';
 import {
+  DEFAULT_OPTIONS,
+  ReadyState,
+  UNPARSABLE_JSON_OBJECT,
+  isEventSourceSupported,
+} from "./constants";
+import {
+  JsonValue,
   Options,
   ReadyStateState,
-  SendMessage,
   SendJsonMessage,
-  WebSocketMessage,
+  SendMessage,
   WebSocketHook,
   WebSocketLike,
-  JsonValue,
-} from './types';
-import { assertIsWebSocket } from './util';
+  WebSocketMessage,
+} from "./types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { assertIsWebSocket } from "./util";
+import { createOrJoinSocket } from "./create-or-join";
+import { flushSync } from "react-dom";
+import { getUrl } from "./get-url";
+import websocketWrapper from "./proxy";
 
 export const useWebSocket = <T extends JsonValue | null = JsonValue | null>(
   url: string | (() => string | Promise<string>) | null,
   options: Options = DEFAULT_OPTIONS,
-  connect: boolean = true,
+  connect: boolean = true
 ): WebSocketHook<T> => {
-  const [lastMessage, setLastMessage] = useState<WebSocketEventMap['message'] | null>(null);
+  // const [lastMessage, setLastMessage] = useState<WebSocketEventMap['message'] | null>(null);
   const [readyState, setReadyState] = useState<ReadyStateState>({});
-  const lastJsonMessage: T = useMemo(() => {
-    if (lastMessage) {
-      try {
-        return JSON.parse(lastMessage.data);
-      } catch (e) {
-        return UNPARSABLE_JSON_OBJECT;
-      }
-    }
-    return null; 
-  },[lastMessage]);
+  // const lastJsonMessage: T = useMemo(() => {
+  //   if (lastMessage) {
+  //     try {
+  //       return JSON.parse(lastMessage.data);
+  //     } catch (e) {
+  //       return UNPARSABLE_JSON_OBJECT;
+  //     }
+  //   }
+  //   return null;
+  // },[lastMessage]);
   const convertedUrl = useRef<string | null>(null);
   const webSocketRef = useRef<WebSocketLike | null>(null);
   const startRef = useRef<() => void>(() => void 0);
@@ -43,20 +49,22 @@ export const useWebSocket = <T extends JsonValue | null = JsonValue | null>(
   optionsCache.current = options;
 
   const readyStateFromUrl: ReadyState =
-    convertedUrl.current && readyState[convertedUrl.current] !== undefined ?
-      readyState[convertedUrl.current] :
-      url !== null && connect === true ?
-        ReadyState.CONNECTING :
-        ReadyState.UNINSTANTIATED;
+    convertedUrl.current && readyState[convertedUrl.current] !== undefined
+      ? readyState[convertedUrl.current]
+      : url !== null && connect === true
+      ? ReadyState.CONNECTING
+      : ReadyState.UNINSTANTIATED;
 
-  const stringifiedQueryParams = options.queryParams ? JSON.stringify(options.queryParams) : null;
+  const stringifiedQueryParams = options.queryParams
+    ? JSON.stringify(options.queryParams)
+    : null;
 
   const sendMessage: SendMessage = useCallback((message, keep = true) => {
     if (isEventSourceSupported && webSocketRef.current instanceof EventSource) {
-      console.warn('Unable to send a message from an eventSource');
+      console.warn("Unable to send a message from an eventSource");
       return;
     }
-  
+
     if (webSocketRef.current?.readyState === ReadyState.OPEN) {
       assertIsWebSocket(webSocketRef.current, optionsCache.current.skipAssert);
       webSocketRef.current.send(message);
@@ -65,12 +73,18 @@ export const useWebSocket = <T extends JsonValue | null = JsonValue | null>(
     }
   }, []);
 
-  const sendJsonMessage: SendJsonMessage = useCallback((message, keep = true) => {
-    sendMessage(JSON.stringify(message), keep);
-  }, [sendMessage]);
-  
+  const sendJsonMessage: SendJsonMessage = useCallback(
+    (message, keep = true) => {
+      sendMessage(JSON.stringify(message), keep);
+    },
+    [sendMessage]
+  );
+
   const getWebSocket = useCallback(() => {
-    if (optionsCache.current.share !== true || (isEventSourceSupported && webSocketRef.current instanceof EventSource)) {
+    if (
+      optionsCache.current.share !== true ||
+      (isEventSourceSupported && webSocketRef.current instanceof EventSource)
+    ) {
       return webSocketRef.current;
     }
 
@@ -91,31 +105,35 @@ export const useWebSocket = <T extends JsonValue | null = JsonValue | null>(
       const start = async () => {
         convertedUrl.current = await getUrl(url, optionsCache);
 
-        const protectedSetLastMessage = (message: WebSocketEventMap['message']) => {
-          if (!expectClose) {
-            flushSync(() => setLastMessage(message));
-          }
-        };
-  
+        // const protectedSetLastMessage = (
+        //   message: WebSocketEventMap["message"]
+        // ) => {
+        //   if (!expectClose) {
+        //     flushSync(() => setLastMessage(message));
+        //   }
+        // };
+
         const protectedSetReadyState = (state: ReadyState) => {
           if (!expectClose) {
-            flushSync(() => setReadyState(prev => ({
-              ...prev,
-              ...(convertedUrl.current && {[convertedUrl.current]: state}),
-            })));
+            flushSync(() =>
+              setReadyState((prev) => ({
+                ...prev,
+                ...(convertedUrl.current && { [convertedUrl.current]: state }),
+              }))
+            );
           }
         };
 
-        if(createOrJoin) {
+        if (createOrJoin) {
           removeListeners = createOrJoinSocket(
             webSocketRef,
             convertedUrl.current,
             protectedSetReadyState,
             optionsCache,
-            protectedSetLastMessage,
+            // protectedSetLastMessage,
             startRef,
             reconnectCount,
-            sendMessage,
+            sendMessage
           );
         }
       };
@@ -127,27 +145,28 @@ export const useWebSocket = <T extends JsonValue | null = JsonValue | null>(
           start();
         }
       };
-    
+
       start();
       return () => {
         expectClose = true;
         createOrJoin = false;
         if (webSocketProxy.current) webSocketProxy.current = null;
         removeListeners?.();
-        setLastMessage(null);
       };
     } else if (url === null || connect === false) {
       reconnectCount.current = 0; // reset reconnection attempts
-      setReadyState(prev => ({
+      setReadyState((prev) => ({
         ...prev,
-        ...(convertedUrl.current && {[convertedUrl.current]: ReadyState.CLOSED}),
+        ...(convertedUrl.current && {
+          [convertedUrl.current]: ReadyState.CLOSED,
+        }),
       }));
     }
   }, [url, connect, stringifiedQueryParams, sendMessage]);
 
   useEffect(() => {
     if (readyStateFromUrl === ReadyState.OPEN) {
-      messageQueue.current.splice(0).forEach(message => {
+      messageQueue.current.splice(0).forEach((message) => {
         sendMessage(message);
       });
     }
@@ -156,8 +175,8 @@ export const useWebSocket = <T extends JsonValue | null = JsonValue | null>(
   return {
     sendMessage,
     sendJsonMessage,
-    lastMessage,
-    lastJsonMessage,
+    // lastMessage,
+    // lastJsonMessage,
     readyState: readyStateFromUrl,
     getWebSocket,
   };

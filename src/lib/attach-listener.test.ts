@@ -1,181 +1,183 @@
-import { MutableRefObject } from 'react';
-import { attachListeners } from './attach-listener';
+import { MutableRefObject } from "react";
+import { Options } from "./types";
+import { ReadyState } from "./constants";
 import WS from "jest-websocket-mock";
-import { Options } from './types';
-import { ReadyState } from './constants';
+import { attachListeners } from "./attach-listener";
 
 let server: WS;
 
-const noop = () => { };
+const noop = () => {};
 const DEFAULT_OPTIONS: Options = {};
 let client: WebSocket;
 let reconnectCountRef: MutableRefObject<number>;
 let optionRef: MutableRefObject<Options>;
-const sleep = (duration: number): Promise<void> => new Promise(resolve => setTimeout(() => resolve(), duration));
+const sleep = (duration: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(() => resolve(), duration));
 
 beforeEach(async () => {
-    server = new WS('ws://localhost:1234');
-    client = new WebSocket('ws://localhost:1234');
-    reconnectCountRef = { current: 0 };
-    optionRef = { current: { ...DEFAULT_OPTIONS } };
+  server = new WS("ws://localhost:1234");
+  client = new WebSocket("ws://localhost:1234");
+  reconnectCountRef = { current: 0 };
+  optionRef = { current: { ...DEFAULT_OPTIONS } };
 });
 
 afterEach(() => {
-    WS.clean();
+  WS.clean();
 });
 
-test('It returns a cleanup function that closes the websocket', () => {
-    client.close = jest.fn((code?: number, reason?: string) => { });
+test("It returns a cleanup function that closes the websocket", () => {
+  client.close = jest.fn((code?: number, reason?: string) => {});
 
-    const cleanupFn = attachListeners(
-        client,
-        { setLastMessage: noop, setReadyState: noop },
-        optionRef,
-        noop,
-        reconnectCountRef,
-        noop,
-    );
+  const cleanupFn = attachListeners(
+    client,
+    { setReadyState: noop },
+    optionRef,
+    noop,
+    reconnectCountRef,
+    noop
+  );
 
-    cleanupFn();
+  cleanupFn();
 
-    expect(client.close).toHaveBeenCalled();
-})
+  expect(client.close).toHaveBeenCalled();
+});
 
-test('Messages received by the webwsocket are passed to the lastMessageSetter', () => {
-    const setLastMessage = jest.fn((message: WebSocketEventMap['message']) => { });
+// test("Messages received by the webwsocket are passed to the lastMessageSetter", () => {
+//   const setLastMessage = jest.fn((message: WebSocketEventMap["message"]) => {});
 
+//   attachListeners(
+//     client,
+//     { setReadyState: noop },
+//     optionRef,
+//     noop,
+//     reconnectCountRef,
+//     noop
+//   );
+
+//   server.send("hello");
+
+//   expect(setLastMessage.mock.calls[0][0].data).toEqual("hello");
+// });
+
+test("The readyState setter is called when the websocket connection is open", () => {
+  const setReadyState = jest.fn((readyState: ReadyState) => {});
+
+  attachListeners(
+    client,
+    { setReadyState },
+    optionRef,
+    noop,
+    reconnectCountRef,
+    noop
+  );
+
+  server.close();
+
+  expect(setReadyState).toHaveBeenCalled();
+});
+
+test("It attempts to reconnect up to specified reconnect attempts", async () => {
+  const reconnect = jest.fn(() => {
+    client = new WebSocket("ws://localhost:1234");
     attachListeners(
-        client,
-        { setLastMessage, setReadyState: noop },
-        optionRef,
-        noop,
-        reconnectCountRef,
-        noop,
+      client,
+      { setReadyState: noop },
+      optionRef,
+      reconnect,
+      reconnectCountRef,
+      noop
     );
+  });
+  optionRef.current.shouldReconnect = () => true;
+  optionRef.current.reconnectAttempts = 5;
+  optionRef.current.reconnectInterval = 100;
 
-    server.send('hello');
+  attachListeners(
+    client,
+    { setReadyState: noop },
+    optionRef,
+    reconnect,
+    reconnectCountRef,
+    noop
+  );
 
-    expect(setLastMessage.mock.calls[0][0].data).toEqual('hello');
-})
+  await sleep(1000);
+  server.close();
+  await sleep(1000);
 
-test('The readyState setter is called when the websocket connection is open', () => {
-    const setReadyState = jest.fn((readyState: ReadyState) => { });
+  expect(reconnect).toHaveBeenCalledTimes(5);
+});
 
+test("It accepts a function for reconnectInterval to customize the timing of reconnect attempts", async () => {
+  const reconnect = jest.fn(() => {
+    client = new WebSocket("ws://localhost:1234");
     attachListeners(
-        client,
-        { setLastMessage: noop, setReadyState },
-        optionRef,
-        noop,
-        reconnectCountRef,
-        noop,
+      client,
+      { setReadyState: noop },
+      optionRef,
+      reconnect,
+      reconnectCountRef,
+      noop
     );
+  });
+  optionRef.current.shouldReconnect = () => true;
+  optionRef.current.reconnectAttempts = 5;
+  optionRef.current.reconnectInterval = (attemptCount: number) =>
+    Math.pow(attemptCount, 2) * 100;
 
-    server.close();
+  attachListeners(
+    client,
+    { setReadyState: noop },
+    optionRef,
+    reconnect,
+    reconnectCountRef,
+    noop
+  );
 
-    expect(setReadyState).toHaveBeenCalled();
-})
+  await sleep(1000);
+  server.close();
+  await sleep(1000);
 
-test('It attempts to reconnect up to specified reconnect attempts', async () => {
-    const reconnect = jest.fn(() => {
-        client = new WebSocket('ws://localhost:1234');
-        attachListeners(
-            client,
-            { setLastMessage: noop, setReadyState: noop },
-            optionRef,
-            reconnect,
-            reconnectCountRef,
-            noop,
-        );
-    });
-    optionRef.current.shouldReconnect = () => true;
-    optionRef.current.reconnectAttempts = 5;
-    optionRef.current.reconnectInterval = 100;
+  //100 + 200 + 400 = 700 -- a 4th attempt would take 800ms, totalling 1500ms which would exceed the 1000ms since the server closed
+  expect(reconnect).toHaveBeenCalledTimes(3);
+});
 
-    attachListeners(
-        client,
-        { setLastMessage: noop, setReadyState: noop },
-        optionRef,
-        reconnect,
-        reconnectCountRef,
-        noop,
-    );
+test("When server closes the websocket, readyState transitions immediately to CLOSED", async () => {
+  const setReadyStateFn = jest.fn((readyState: ReadyState) => {});
 
-    await sleep(1000);
-    server.close();
-    await sleep(1000);
+  attachListeners(
+    client,
+    { setReadyState: setReadyStateFn },
+    optionRef,
+    noop,
+    reconnectCountRef,
+    noop
+  );
+  await sleep(1000);
+  server.close();
+  await sleep(1000);
+  expect(setReadyStateFn.mock.calls[0][0]).toEqual(ReadyState.OPEN);
+  expect(setReadyStateFn.mock.calls[1][0]).toEqual(ReadyState.CLOSED);
+  expect(setReadyStateFn).toHaveBeenCalledTimes(2);
+});
 
-    expect(reconnect).toHaveBeenCalledTimes(5);
-})
+test("When client closes the websocket using the provided cleanup function, readyState transitions to CLOSING and then to CLOSED", async () => {
+  const setReadyStateFn = jest.fn((readyState: ReadyState) => {});
 
-test('It accepts a function for reconnectInterval to customize the timing of reconnect attempts', async () => {
-    const reconnect = jest.fn(() => {
-        client = new WebSocket('ws://localhost:1234');
-        attachListeners(
-            client,
-            { setLastMessage: noop, setReadyState: noop },
-            optionRef,
-            reconnect,
-            reconnectCountRef,
-            noop,
-        );
-    });
-    optionRef.current.shouldReconnect = () => true;
-    optionRef.current.reconnectAttempts = 5;
-    optionRef.current.reconnectInterval = (attemptCount: number) => Math.pow(attemptCount, 2) * 100;
+  const cleanup = attachListeners(
+    client,
+    { setReadyState: setReadyStateFn },
+    optionRef,
+    noop,
+    reconnectCountRef,
+    noop
+  );
 
-    attachListeners(
-        client,
-        { setLastMessage: noop, setReadyState: noop },
-        optionRef,
-        reconnect,
-        reconnectCountRef,
-        noop,
-    );
-
-    await sleep(1000);
-    server.close();
-    await sleep(1000);
-    
-    //100 + 200 + 400 = 700 -- a 4th attempt would take 800ms, totalling 1500ms which would exceed the 1000ms since the server closed
-    expect(reconnect).toHaveBeenCalledTimes(3);
-})
-
-test('When server closes the websocket, readyState transitions immediately to CLOSED', async () => {
-    const setReadyStateFn = jest.fn((readyState: ReadyState) => {});
-
-    attachListeners(
-        client,
-        { setLastMessage: noop, setReadyState: setReadyStateFn },
-        optionRef,
-        noop,
-        reconnectCountRef,
-        noop,
-    );
-    await sleep(1000);
-    server.close();
-    await sleep(1000);
-    expect(setReadyStateFn.mock.calls[0][0]).toEqual(ReadyState.OPEN);
-    expect(setReadyStateFn.mock.calls[1][0]).toEqual(ReadyState.CLOSED);
-    expect(setReadyStateFn).toHaveBeenCalledTimes(2);
-})
-
-test('When client closes the websocket using the provided cleanup function, readyState transitions to CLOSING and then to CLOSED', async () => {
-    const setReadyStateFn = jest.fn((readyState: ReadyState) => {});
-    
-    const cleanup = attachListeners(
-        client,
-        { setLastMessage: noop, setReadyState: setReadyStateFn },
-        optionRef,
-        noop,
-        reconnectCountRef,
-        noop,
-    );
-
-    await sleep(1000);
-    cleanup();
-    await sleep(1000);
-    expect(setReadyStateFn.mock.calls[0][0]).toEqual(ReadyState.OPEN);
-    expect(setReadyStateFn.mock.calls[1][0]).toEqual(ReadyState.CLOSING);
-    expect(setReadyStateFn.mock.calls[2][0]).toEqual(ReadyState.CLOSED);
-    expect(setReadyStateFn).toHaveBeenCalledTimes(3);
-})
+  await sleep(1000);
+  cleanup();
+  await sleep(1000);
+  expect(setReadyStateFn.mock.calls[0][0]).toEqual(ReadyState.OPEN);
+  expect(setReadyStateFn.mock.calls[1][0]).toEqual(ReadyState.CLOSING);
+  expect(setReadyStateFn.mock.calls[2][0]).toEqual(ReadyState.CLOSED);
+  expect(setReadyStateFn).toHaveBeenCalledTimes(3);
+});

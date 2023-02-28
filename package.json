@@ -1,6 +1,6 @@
 {
-  "name": "react-use-websocket",
-  "version": "4.3.1",
+  "name": "@rphk/react-use-websocket-stateless",
+  "version": "0.0.2",
   "description": "React Hook for WebSocket communication",
   "main": "./dist/index.js",
   "files": [
@@ -87,5 +87,8 @@
   "bugs": {
     "url": "https://github.com/robtaussig/react-use-websocket/issues"
   },
-  "homepage": "https://github.com/robtaussig/react-use-websocket#readme"
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

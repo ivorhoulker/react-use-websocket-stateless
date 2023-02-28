@@ -1,10 +1,15 @@
-import { MutableRefObject } from 'react';
-import { sharedWebSockets } from './globals';
-import { Options, SendMessage, Subscriber, WebSocketLike } from './types';
-import { isEventSourceSupported, ReadyState, isReactNative } from './constants';
-import { attachListeners } from './attach-listener';
-import { attachSharedListeners } from './attach-shared-listeners';
-import { addSubscriber, removeSubscriber, hasSubscribers } from './manage-subscribers';
+import { Options, SendMessage, Subscriber, WebSocketLike } from "./types";
+import { ReadyState, isEventSourceSupported, isReactNative } from "./constants";
+import {
+  addSubscriber,
+  hasSubscribers,
+  removeSubscriber,
+} from "./manage-subscribers";
+
+import { MutableRefObject } from "react";
+import { attachListeners } from "./attach-listener";
+import { attachSharedListeners } from "./attach-shared-listeners";
+import { sharedWebSockets } from "./globals";
 
 //TODO ensure that all onClose callbacks are called
 
@@ -13,7 +18,7 @@ const cleanSubscribers = (
   subscriber: Subscriber,
   optionsRef: MutableRefObject<Options>,
   setReadyState: (readyState: ReadyState) => void,
-  clearSocketIoPingInterval: (() => void) | null,
+  clearSocketIoPingInterval: (() => void) | null
 ) => {
   return () => {
     removeSubscriber(url, subscriber);
@@ -21,7 +26,7 @@ const cleanSubscribers = (
       try {
         const socketLike = sharedWebSockets[url];
         if (socketLike instanceof WebSocket) {
-          socketLike.onclose = (event: WebSocketEventMap['close']) => {
+          socketLike.onclose = (event: WebSocketEventMap["close"]) => {
             if (optionsRef.current.onClose) {
               optionsRef.current.onClose(event);
             }
@@ -29,14 +34,12 @@ const cleanSubscribers = (
           };
         }
         socketLike.close();
-      } catch (e) {
-
-      }
+      } catch (e) {}
       if (clearSocketIoPingInterval) clearSocketIoPingInterval();
 
       delete sharedWebSockets[url];
     }
-  }
+  };
 };
 
 export const createOrJoinSocket = (
@@ -44,32 +47,32 @@ export const createOrJoinSocket = (
   url: string,
   setReadyState: (readyState: ReadyState) => void,
   optionsRef: MutableRefObject<Options>,
-  setLastMessage: (message: WebSocketEventMap['message']) => void,
+  // setLastMessage: (message: WebSocketEventMap["message"]) => void,
   startRef: MutableRefObject<() => void>,
   reconnectCount: MutableRefObject<number>,
-  sendMessage: SendMessage,
+  sendMessage: SendMessage
 ): (() => void) => {
   if (!isEventSourceSupported && optionsRef.current.eventSourceOptions) {
     if (isReactNative) {
-      throw new Error('EventSource is not supported in ReactNative');
+      throw new Error("EventSource is not supported in ReactNative");
     } else {
-      throw new Error('EventSource is not supported');
+      throw new Error("EventSource is not supported");
     }
   }
 
   if (optionsRef.current.share) {
-    let clearSocketIoPingInterval: ((() => void) | null) = null;
+    let clearSocketIoPingInterval: (() => void) | null = null;
     if (sharedWebSockets[url] === undefined) {
-      sharedWebSockets[url] = optionsRef.current.eventSourceOptions ?
-        new EventSource(url, optionsRef.current.eventSourceOptions) :
-        new WebSocket(url, optionsRef.current.protocols);
+      sharedWebSockets[url] = optionsRef.current.eventSourceOptions
+        ? new EventSource(url, optionsRef.current.eventSourceOptions)
+        : new WebSocket(url, optionsRef.current.protocols);
       webSocketRef.current = sharedWebSockets[url];
       setReadyState(ReadyState.CONNECTING);
       clearSocketIoPingInterval = attachSharedListeners(
         sharedWebSockets[url],
         url,
         optionsRef,
-        sendMessage,
+        sendMessage
       );
     } else {
       webSocketRef.current = sharedWebSockets[url];
@@ -77,13 +80,13 @@ export const createOrJoinSocket = (
     }
 
     const subscriber: Subscriber = {
-      setLastMessage,
+      // setLastMessage,
       setReadyState,
       optionsRef,
       reconnectCount,
       reconnect: startRef,
     };
-  
+
     addSubscriber(url, subscriber);
 
     return cleanSubscribers(
@@ -91,27 +94,27 @@ export const createOrJoinSocket = (
       subscriber,
       optionsRef,
       setReadyState,
-      clearSocketIoPingInterval,
+      clearSocketIoPingInterval
     );
   } else {
-    webSocketRef.current = optionsRef.current.eventSourceOptions ?
-      new EventSource(url, optionsRef.current.eventSourceOptions) :
-      new WebSocket(url, optionsRef.current.protocols);
+    webSocketRef.current = optionsRef.current.eventSourceOptions
+      ? new EventSource(url, optionsRef.current.eventSourceOptions)
+      : new WebSocket(url, optionsRef.current.protocols);
     setReadyState(ReadyState.CONNECTING);
     if (!webSocketRef.current) {
-      throw new Error('WebSocket failed to be created');
+      throw new Error("WebSocket failed to be created");
     }
 
     return attachListeners(
       webSocketRef.current,
       {
-        setLastMessage,
-        setReadyState
+        // setLastMessage,
+        setReadyState,
       },
       optionsRef,
       startRef.current,
       reconnectCount,
-      sendMessage,
+      sendMessage
     );
   }
 };
